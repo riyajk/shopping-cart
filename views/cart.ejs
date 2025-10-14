@@ -1,0 +1,63 @@
+<%- include('partials/header') %>
+<h1>Your Cart</h1>
+<div id="cart-area"></div>
+<script>
+async function refreshCart(){
+  const res = await fetch('/api/cart');
+  if (res.status === 401) {
+    document.getElementById('cart-area').innerHTML = '<p>Please login to see your cart.</p>';
+    return;
+  }
+  const cart = await res.json();
+  if (!cart.items || cart.items.length===0) {
+    document.getElementById('cart-area').innerHTML = '<p>Your cart is empty.</p>';
+    return;
+  }
+  const html = cart.items.map(i=>`
+    <div class="cart-item" data-id="${i.product._id}">
+      <img src="${i.product.image || '/images/placeholder.png'}" />
+      <div>
+        <h4>${i.product.name}</h4>
+        <p>Price: ₹${i.product.price}</p>
+        <div>
+          <button class="dec">-</button>
+          <span class="qty">${i.quantity}</span>
+          <button class="inc">+</button>
+          <button class="remove">Remove</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  const total = cart.items.reduce((s,i)=>s + (i.product.price * i.quantity), 0);
+  document.getElementById('cart-area').innerHTML = html + '<h3>Total: ₹' + total + '</h3>';
+  document.querySelectorAll('.inc').forEach(btn=>{
+    btn.addEventListener('click', async e=>{
+      const id = btn.closest('.cart-item').dataset.id;
+      const qtyEl = btn.parentElement.querySelector('.qty');
+      const newQty = Number(qtyEl.textContent) + 1;
+      await fetch('/api/cart/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:newQty})});
+      refreshCart();
+    });
+  });
+  document.querySelectorAll('.dec').forEach(btn=>{
+    btn.addEventListener('click', async e=>{
+      const id = btn.closest('.cart-item').dataset.id;
+      const qtyEl = btn.parentElement.querySelector('.qty');
+      const newQty = Number(qtyEl.textContent) - 1;
+      await fetch('/api/cart/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:newQty})});
+      refreshCart();
+    });
+  });
+  document.querySelectorAll('.remove').forEach(btn=>{
+    btn.addEventListener('click', async e=>{
+      const id = btn.closest('.cart-item').dataset.id;
+      await fetch('/api/cart/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id})});
+      refreshCart();
+    });
+  });
+}
+
+window.refreshCart = refreshCart;
+refreshCart();
+</script>
+<%- include('partials/footer') %>

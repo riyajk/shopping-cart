@@ -1,0 +1,30 @@
+<%- include('partials/header') %>
+<h1>Products</h1>
+<div id="products" class="grid"></div>
+
+<script>
+(async function(){
+  const res = await fetch('/api/products');
+  const products = await res.json();
+  const container = document.getElementById('products');
+  container.innerHTML = products.map(p => `
+    <div class="card">
+      <img src="${p.image || '/images/placeholder.png'}" alt="${p.name}" />
+      <h3>${p.name}</h3>
+      <p>Price: ₹${p.price}</p>
+      <p>In stock: ${p.quantity}</p>
+      <button class="add" data-id="${p._id}">Add to cart</button>
+    </div>
+  `).join('');
+  container.querySelectorAll('.add').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      const id = btn.dataset.id;
+      await fetch('/api/cart/add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:1})});
+      alert('Added to cart');
+    });
+  });
+})();
+</script>
+<%- include('partials/footer') %>
+
+
