@@ -17,25 +17,44 @@ router.post('/add', auth, async (req, res) => {
   const product = await Product.findById(productId);
   if (!product) return res.status(404).json({ message: 'Product not found' });
 
+  // load or create user's cart before validating against it
   let cart = await Cart.findOne({ user: req.user._id });
   if (!cart) cart = new Cart({ user: req.user._id, items: [] });
 
   const existing = cart.items.find(i => i.product.toString() === productId);
-  if (existing) existing.quantity += Number(qty);
-  else cart.items.push({ product: productId, quantity: Number(qty) });
+  const currentQty = existing ? existing.quantity : 0;
+  const requestedTotal = currentQty + Number(qty);
+
+  // check stock against what user already has in cart
+  if (requestedTotal > product.quantity) {
+    return res.status(400).json({ message: 'Request would exceed available stock' });
+  }
+
+  if (existing) {
+    existing.quantity = requestedTotal;
+  } else {
+    cart.items.push({ product: productId, quantity: Number(qty) });
+  }
 
   await cart.save();
 
   // emit socket event to notify clients (e.g., cartUpdated)
   const io = req.app.locals.io;
-  io.to(req.user._id.toString()).emit('cartUpdated', { userId: req.user._id });
+  const populated = await Cart.findOne({ user: req.user._id }).populate('items.product');
+  io.to(req.user._id.toString()).emit('cartUpdated', populated);
 
-  res.json(cart);
+  res.json(populated);
 });
 
 // update quantity
 router.post('/update', auth, async (req, res) => {
   const { productId, qty } = req.body;
+  const product = await Product.findById(productId);
+  if (!product) return res.status(404).json({ message: 'Product not found' });
+  if (Number(qty) > product.quantity) {
+    return res.status(400).json({ message: 'Requested quantity exceeds stock' });
+  }
+
   let userCart = await Cart.findOne({ user: req.user._id });
   if (!userCart) return res.status(404).json({ message: 'Cart not found' });
   const item = userCart.items.find(i => i.product.toString() === productId);
@@ -45,9 +64,10 @@ router.post('/update', auth, async (req, res) => {
   await userCart.save();
 
   const io = req.app.locals.io;
-  io.to(req.user._id.toString()).emit('cartUpdated', { userId: req.user._id });
+  const populated = await Cart.findOne({ user: req.user._id }).populate('items.product');
+  io.to(req.user._id.toString()).emit('cartUpdated', populated);
 
-  res.json(userCart);
+  res.json(populated);
 });
 
 // remove item
@@ -59,9 +79,10 @@ router.post('/remove', auth, async (req, res) => {
   await userCart.save();
 
   const io = req.app.locals.io;
-  io.to(req.user._id.toString()).emit('cartUpdated', { userId: req.user._id });
+  const populated = await Cart.findOne({ user: req.user._id }).populate('items.product');
+  io.to(req.user._id.toString()).emit('cartUpdated', populated);
 
-  res.json(userCart);
+  res.json(populated);
 });
 
 module.exports = router;

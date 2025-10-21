@@ -2,10 +2,61 @@
 <h1>Products</h1>
 <div id="products" class="grid"></div>
 
+<!-- Toast container (temporary, page-scoped) -->
+<style>
+  /* simple toast styles (moved to bottom-right) */
+  #toast-container {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    z-index: 1080;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-end;
+  }
+  .toast-msg {
+    min-width: 200px;
+    max-width: 320px;
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 0.6rem 0.9rem;
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity .22s ease, transform .22s ease;
+    font-size: 0.95rem;
+  }
+  .toast-msg.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .toast-msg.success { background: #198754; }
+  .toast-msg.error { background: #dc3545; }
+</style>
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
 <script>
 (async function(){
   // create socket for this page (session.js also joins room on load if user present)
   const socket = io();
+
+  function showToast(message, type = 'success', timeout = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = `toast-msg ${type === 'error' ? 'error' : 'success'}`;
+    el.textContent = message;
+    container.appendChild(el);
+    // trigger show
+    requestAnimationFrame(()=>el.classList.add('show'));
+    // remove after timeout
+    setTimeout(()=>{
+      el.classList.remove('show');
+      setTimeout(()=> el.remove(), 300);
+    }, timeout);
+  }
 
   const res = await fetch('/api/products');
   const products = await res.json();
@@ -16,28 +67,40 @@
       <h3>${p.name}</h3>
       <p>Price: ₹${p.price}</p>
       <p>In stock: ${p.quantity}</p>
-      <button class="add btn btn-success" data-id="${p._id}">Add to cart</button>
+      <button class="add btn btn-success" data-id="${p._id}" ${p.quantity <= 0 ? 'disabled' : ''}>
+        ${p.quantity <= 0 ? 'Out of stock' : 'Add to cart'}
+      </button>
     </div>
   `).join('');
+
   container.querySelectorAll('.add').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
+      if (btn.disabled) return; // safety check for out-of-stock
+
       const id = btn.dataset.id;
 
       // emit socket event and use acknowledgement to receive result
       socket.emit('cart:add', { productId: id, qty: 1 }, (ack) => {
         if (ack && ack.ok) {
           // server will also emit 'cartUpdated' to update cart UI on other pages
-          // show a small toast or alert here
-          alert('Added to cart');
+          showToast('Added to cart', 'success');
         } else {
-          alert(ack && ack.error ? ack.error : 'Failed to add to cart');
+          showToast(ack && ack.error ? ack.error : 'Failed to add to cart', 'error');
         }
       });
 
       // fallback: also POST to api if socket not connected
       if (!socket.connected) {
-        await fetch('/cart/add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:1})});
-        alert('Added to cart (http fallback)');
+        const fallback = await fetch('/cart/add', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({productId:id,qty:1})
+        });
+        if (fallback.ok) showToast('Added to cart (http fallback)', 'success');
+        else {
+          const err = await fallback.json().catch(()=>({message:'Failed'}));
+          showToast(err.message || 'Failed to add to cart (http fallback)', 'error');
+        }
       }
     });
   });
