@@ -4,6 +4,9 @@
 
 <script>
 (async function(){
+  // create socket for this page (session.js also joins room on load if user present)
+  const socket = io();
+
   const res = await fetch('/api/products');
   const products = await res.json();
   const container = document.getElementById('products');
@@ -13,15 +16,36 @@
       <h3>${p.name}</h3>
       <p>Price: ₹${p.price}</p>
       <p>In stock: ${p.quantity}</p>
-      <button class="add" data-id="${p._id}">Add to cart</button>
+      <button class="add btn btn-success" data-id="${p._id}">Add to cart</button>
     </div>
   `).join('');
   container.querySelectorAll('.add').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       const id = btn.dataset.id;
-      await fetch('/api/cart/add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:1})});
-      alert('Added to cart');
+
+      // emit socket event and use acknowledgement to receive result
+      socket.emit('cart:add', { productId: id, qty: 1 }, (ack) => {
+        if (ack && ack.ok) {
+          // server will also emit 'cartUpdated' to update cart UI on other pages
+          // show a small toast or alert here
+          alert('Added to cart');
+        } else {
+          alert(ack && ack.error ? ack.error : 'Failed to add to cart');
+        }
+      });
+
+      // fallback: also POST to api if socket not connected
+      if (!socket.connected) {
+        await fetch('/cart/add', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:1})});
+        alert('Added to cart (http fallback)');
+      }
     });
+  });
+
+  // optional: listen for cartUpdated and show a visual cue
+  socket.on('cartUpdated', (cart) => {
+    console.debug('cartUpdated received', cart);
+    // you can update a cart-count badge here if exists
   });
 })();
 </script>

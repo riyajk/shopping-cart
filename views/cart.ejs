@@ -1,63 +1,46 @@
 <%- include('partials/header') %>
-<h1>Your Cart</h1>
-<div id="cart-area"></div>
-<script>
-async function refreshCart(){
-  const res = await fetch('/api/cart');
-  if (res.status === 401) {
-    document.getElementById('cart-area').innerHTML = '<p>Please login to see your cart.</p>';
-    return;
-  }
-  const cart = await res.json();
-  if (!cart.items || cart.items.length===0) {
-    document.getElementById('cart-area').innerHTML = '<p>Your cart is empty.</p>';
-    return;
-  }
-  const html = cart.items.map(i=>`
-    <div class="cart-item" data-id="${i.product._id}">
-      <img src="${i.product.image || '/images/placeholder.png'}" />
-      <div>
-        <h4>${i.product.name}</h4>
-        <p>Price: ₹${i.product.price}</p>
-        <div>
-          <button class="dec">-</button>
-          <span class="qty">${i.quantity}</span>
-          <button class="inc">+</button>
-          <button class="remove">Remove</button>
-        </div>
-      </div>
-    </div>
-  `).join('');
-  const total = cart.items.reduce((s,i)=>s + (i.product.price * i.quantity), 0);
-  document.getElementById('cart-area').innerHTML = html + '<h3>Total: ₹' + total + '</h3>';
-  document.querySelectorAll('.inc').forEach(btn=>{
-    btn.addEventListener('click', async e=>{
-      const id = btn.closest('.cart-item').dataset.id;
-      const qtyEl = btn.parentElement.querySelector('.qty');
-      const newQty = Number(qtyEl.textContent) + 1;
-      await fetch('/api/cart/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:newQty})});
-      refreshCart();
-    });
-  });
-  document.querySelectorAll('.dec').forEach(btn=>{
-    btn.addEventListener('click', async e=>{
-      const id = btn.closest('.cart-item').dataset.id;
-      const qtyEl = btn.parentElement.querySelector('.qty');
-      const newQty = Number(qtyEl.textContent) - 1;
-      await fetch('/api/cart/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id,qty:newQty})});
-      refreshCart();
-    });
-  });
-  document.querySelectorAll('.remove').forEach(btn=>{
-    btn.addEventListener('click', async e=>{
-      const id = btn.closest('.cart-item').dataset.id;
-      await fetch('/api/cart/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:id})});
-      refreshCart();
-    });
-  });
-}
+<h1 class="mt-4 mb-4">Shopping Cart</h1>
+<div class="container">
+  <% if (!cart.items || cart.items.length === 0) { %>
+    <p>Your cart is empty.</p>
+  <% } else { %>
+    <table class="table table-bordered align-middle" id="cart-table">
+      <thead>
+        <tr>
+          <th>Item Description</th>
+          <th style="width:180px;">Quantity</th>
+          <th>Price</th>
+          <th style="width:100px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% cart.items.forEach(function(i) { %>
+          <tr class="cart-item" data-id="<%= i.product._id %>">
+            <td>
+              <%= i.product.name %>
+            </td>
+            <td>
+              <div class="input-group" style="max-width:120px;">
+                <button class="btn btn-outline-secondary btn-qty" data-action="decrement" <%= i.quantity <= 1 ? 'disabled' : '' %>>-</button>
+                <span class="form-control text-center qty" style="padding:0 0;"><%= i.quantity %></span>
+                <button class="btn btn-outline-secondary btn-qty" data-action="increment">+</button>
+              </div>
+            </td>
+            <td>₹<%= i.product.price %></td>
+            <td>
+              <button class="btn btn-link text-danger btn-remove" title="Remove"><b>&times;</b></button>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+    <div class="text-end" id="cart-total"><strong>
+      Total: ₹<span id="total-amount"><%= cart.items.reduce((s,i)=>s + (i.product.price * i.quantity), 0) %></span>
+    </strong></div>
+  <% } %>
+</div>
 
-window.refreshCart = refreshCart;
-refreshCart();
-</script>
+<!-- load cart client script (uses socket.io and session.js which are loaded in header) -->
+<script src="/js/cart.js"></script>
+
 <%- include('partials/footer') %>

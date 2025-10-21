@@ -4,11 +4,11 @@ const auth = require('../middleware/auth');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 
-// get cart
+// Render cart page server-side and pass user id for socket room
 router.get('/', auth, async (req, res) => {
   let cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
-  if (!cart) cart = await Cart.create({ user: req.user._id, items: [] });
-  res.json(cart);
+  if (!cart) cart = { items: [] };
+  res.render('cart', { cart, user: req.user }); // pass user to template
 });
 
 // add to cart
