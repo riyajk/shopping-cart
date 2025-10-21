@@ -1,0 +1,45 @@
+<%- include('partials/header') %>
+
+<div class="container mt-5" style="max-width:480px;">
+  <h2>Login</h2>
+
+  <% if (typeof error !== 'undefined') { %>
+    <div class="alert alert-danger"><%= error %></div>
+  <% } %>
+
+  <form method="POST" action="/auth/login" class="needs-validation" novalidate>
+    <div class="mb-3">
+      <label for="email" class="form-label">Email</label>
+      <input id="email" name="email" type="email" class="form-control" required>
+      <div class="invalid-feedback">Please enter your email.</div>
+    </div>
+
+    <div class="mb-3">
+      <label for="password" class="form-label">Password</label>
+      <input id="password" name="password" type="password" class="form-control" required minlength="6">
+      <div class="invalid-feedback">Please enter your password (min 6 chars).</div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Login</button>
+    <a href="/auth/register" class="btn btn-link">Register</a>
+  </form>
+</div>
+
+<script>
+  // Bootstrap client-side validation
+  (function () {
+    'use strict';
+    const forms = document.querySelectorAll('.needs-validation');
+    Array.from(forms).forEach(form => {
+      form.addEventListener('submit', event => {
+        if (!form.checkValidity()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+      }, false);
+    });
+  })();
+</script>
+
+<%- include('partials/footer') %>

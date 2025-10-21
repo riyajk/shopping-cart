@@ -8,6 +8,11 @@ router.get('/register', (req, res) => {
   res.render('register');
 });
 
+// GET login page
+router.get('/login', (req, res) => {
+  res.render('login');
+});
+
 // POST register with validation
 router.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
@@ -34,18 +39,41 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// login
+// login (supports API and form)
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!user) {
+      // respond according to request type
+      if (req.headers.accept && req.headers.accept.includes('application/json')) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
+      return res.status(400).render('login', { error: 'Invalid credentials' });
+    }
     const isMatch = await user.matchPassword(password);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!isMatch) {
+      if (req.headers.accept && req.headers.accept.includes('application/json')) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
+      return res.status(400).render('login', { error: 'Invalid credentials' });
+    }
+
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
     res.cookie('token', token, { httpOnly: true });
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+
+    // If client expects JSON (API), return JSON; otherwise redirect after form submit
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+      return res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    } else {
+      return res.redirect('/products');
+    }
+  } catch (err) {
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+      return res.status(500).json({ message: err.message });
+    }
+    return res.status(500).render('login', { error: 'Server error' });
+  }
 });
 
 // logout
