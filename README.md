@@ -8,7 +8,7 @@ This project is a starter for a shopping cart app with:
 
 ## Quick start
 
-1. Copy .env.example to .env and update values.
+1. use.env update environment values.
 2. Install dependencies:
    ```
    npm install

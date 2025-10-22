@@ -24,13 +24,6 @@ const io = new Server(server);
 // make io available to routes via app.locals
 app.locals.io = io;
 
-// connect DB
-connectDB().then(() => {
-  console.log('✅ MongoDB connected');
-}).catch(err => {
-  console.error('❌ MongoDB connection error:', err);
-});
-
 // view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -219,5 +212,17 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// Start server only when run directly (so tests can import app without starting listener)
+if (require.main === module) {
+  // connect DB and then listen
+  connectDB().then(() => {
+    const PORT = process.env.PORT || 3000;
+    server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  }).catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
+}
+
+// export app and server for tests
+module.exports = { app, server, io };
