@@ -89,66 +89,92 @@ io.on('connection', (socket) => {
       console.warn(`🚫 cart:updateQty attempted by unauthenticated socket ${socket.id}`);
       return socket.emit('error', { message: 'Not authenticated' });
     }
-    console.log(`🔄 cart:updateQty by user ${userId}: product=${productId}, qty=${qty}`);
     try {
+      const newQty = Number(qty);
+      if (Number.isNaN(newQty) || newQty < 0) {
+        return socket.emit('error', { message: 'Invalid quantity' });
+      }
+
+      const product = await Product.findById(productId);
+      if (!product) return socket.emit('error', { message: 'Product not found' });
+
       let cart = await Cart.findOne({ user: userId });
-      if (!cart) {
-        console.log(`ℹ️ No cart found for user ${userId}`);
-        return;
-      }
+      if (!cart) return socket.emit('error', { message: 'Cart not found' });
+
       const item = cart.items.find(i => i.product.toString() === productId);
-      if (!item) {
-        console.log(`ℹ️ Item ${productId} not found in cart for user ${userId}`);
-        return;
+      if (!item) return socket.emit('error', { message: 'Item not in cart' });
+
+      // compute how many are available for this user: remaining stock + currently reserved by this user's cart item
+      const available = product.quantity;
+
+      if (newQty > available) {
+        return socket.emit('error', { message: 'Requested quantity exceeds stock' });
       }
-      item.quantity = Number(qty);
-      if (item.quantity <= 0) {
+
+      // update product.quantity to reflect the new reserved amount
+      // new remaining stock = available - newQty
+      product.quantity = available - newQty;
+
+      if (newQty <= 0) {
         cart.items = cart.items.filter(i => i.product.toString() !== productId);
-        console.log(`🗑️ Removed item ${productId} from cart for user ${userId} (qty <= 0)`);
+      } else {
+        item.quantity = newQty;
       }
+
+      await product.save();
       await cart.save();
+
       cart = await Cart.findOne({ user: userId }).populate('items.product');
       io.to(userId.toString()).emit('cartUpdated', cart);
-      console.log(`✅ cartUpdated emitted to room ${userId}`);
+      if (socket) socket.emit('cart:updateAck', { ok: true, cart });
     } catch (err) {
       console.error('❌ cart:updateQty error:', err);
+      socket.emit('error', { message: 'Server error' });
     }
   });
 
   socket.on('cart:removeItem', async ({ productId }) => {
     const userId = getUserIdFromSocket(socket);
     if (!userId) {
-      console.warn(`🚫 cart:removeItem attempted by unauthenticated socket ${socket.id}`);
       return socket.emit('error', { message: 'Not authenticated' });
     }
-    console.log(`🗑️ cart:removeItem by user ${userId}: product=${productId}`);
     try {
       let cart = await Cart.findOne({ user: userId });
-      if (!cart) {
-        console.log(`ℹ️ No cart found for user ${userId}`);
-        return;
+      if (!cart) return socket.emit('error', { message: 'Cart not found' });
+
+      const item = cart.items.find(i => i.product.toString() === productId);
+      if (!item) return socket.emit('error', { message: 'Item not in cart' });
+
+      // restore inventory
+      const product = await Product.findById(productId);
+      if (product) {
+        product.quantity += item.quantity;
+        await product.save();
       }
+
       cart.items = cart.items.filter(i => i.product.toString() !== productId);
       await cart.save();
+
       cart = await Cart.findOne({ user: userId }).populate('items.product');
       io.to(userId.toString()).emit('cartUpdated', cart);
-      console.log(`✅ cartUpdated emitted to room ${userId} after removal`);
+      if (socket) socket.emit('cart:removeAck', { ok: true, cart });
     } catch (err) {
       console.error('❌ cart:removeItem error:', err);
+      socket.emit('error', { message: 'Server error' });
     }
   });
 
-  // NEW: handle add-to-cart via socket
+  // handle add-to-cart via socket (with inventory update)
   socket.on('cart:add', async ({ productId, qty = 1 }, callback) => {
     const userId = getUserIdFromSocket(socket);
     if (!userId) {
       const errMsg = 'Not authenticated';
-      console.warn(`🚫 cart:add attempted by unauthenticated socket ${socket.id}`);
       if (typeof callback === 'function') return callback({ ok: false, error: errMsg });
       return socket.emit('error', { message: errMsg });
     }
 
     try {
+      const addQty = Number(qty) || 1;
       const product = await Product.findById(productId);
       if (!product) {
         const errMsg = 'Product not found';
@@ -156,12 +182,23 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // check inventory
+      if (product.quantity < addQty) {
+        const errMsg = 'Not enough stock';
+        if (typeof callback === 'function') return callback({ ok: false, error: errMsg });
+        return socket.emit('error', { message: errMsg });
+      }
+
       let cart = await Cart.findOne({ user: userId });
       if (!cart) cart = new Cart({ user: userId, items: [] });
 
       const existing = cart.items.find(i => i.product.toString() === productId);
-      if (existing) existing.quantity += Number(qty);
-      else cart.items.push({ product: productId, quantity: Number(qty) });
+      if (existing) existing.quantity += addQty;
+      else cart.items.push({ product: productId, quantity: addQty });
+
+      // decrement product inventory
+      product.quantity -= addQty;
+      await product.save();
 
       await cart.save();
 
@@ -170,10 +207,10 @@ io.on('connection', (socket) => {
       io.to(userId.toString()).emit('cartUpdated', cart);
 
       if (typeof callback === 'function') callback({ ok: true, cart });
-
     } catch (err) {
       console.error('❌ cart:add error:', err);
       if (typeof callback === 'function') callback({ ok: false, error: 'Server error' });
+      else socket.emit('error', { message: 'Server error' });
     }
   });
 

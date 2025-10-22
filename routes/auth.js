@@ -79,7 +79,12 @@ router.post('/login', async (req, res) => {
 // logout
 router.post('/logout', (req, res) => {
   res.clearCookie('token');
-  res.json({ message: 'Logged out' });
+
+  // If browser (HTML), redirect to login; otherwise return JSON
+  const acceptsHtml = req.headers.accept && req.headers.accept.includes('text/html');
+  if (acceptsHtml) return res.redirect('/auth/login');
+
+  return res.json({ message: 'Logged out' });
 });
 
 // GET current session (returns user object if logged in, else user: null)
